@@ -9,7 +9,7 @@ const isDevelopment = process.env.NODE_ENV !== 'production';
 // Set AUTH_SERVER_URL environment variable to override
 const AUTH_SERVER_URL =
   process.env.AUTH_SERVER_URL ||
-  (isDevelopment ? 'http://localhost:3001' : 'https://your-production-auth-server.com');
+  (isDevelopment ? 'http://localhost:3001' : 'https://whasender-auth-production.up.railway.app');
 
 module.exports = {
   isDevelopment,
