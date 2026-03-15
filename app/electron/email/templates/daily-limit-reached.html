@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f4f4f4;
+        margin: 0;
+        padding: 20px;
+      }
+      .container {
+        max-width: 600px;
+        margin: 0 auto;
+        background-color: #ffffff;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+      }
+      .header {
+        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        padding: 30px;
+        text-align: center;
+        color: white;
+      }
+      .header h1 {
+        margin: 0;
+        font-size: 24px;
+      }
+      .content {
+        padding: 30px;
+        color: #333;
+      }
+      .alert-box {
+        background-color: #fef3c7;
+        border-left: 4px solid #f59e0b;
+        padding: 15px;
+        margin: 20px 0;
+        border-radius: 4px;
+      }
+      .alert-box p {
+        margin: 0;
+        color: #92400e;
+      }
+      .info-row {
+        margin: 10px 0;
+        padding: 8px 0;
+        border-bottom: 1px solid #e5e7eb;
+      }
+      .info-row:last-child {
+        border-bottom: none;
+      }
+      .stats {
+        background-color: #f9fafb;
+        padding: 20px;
+        border-radius: 8px;
+        margin: 20px 0;
+      }
+      .stats-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 15px;
+        margin-top: 15px;
+      }
+      .stat-item {
+        text-align: center;
+        padding: 10px;
+        background-color: white;
+        border-radius: 6px;
+      }
+      .stat-value {
+        font-size: 24px;
+        font-weight: bold;
+        color: #f59e0b;
+      }
+      .stat-label {
+        font-size: 12px;
+        color: #6b7280;
+        margin-top: 5px;
+      }
+      .resume-info {
+        background-color: #dbeafe;
+        border-left: 4px solid #3b82f6;
+        padding: 15px;
+        margin: 20px 0;
+        border-radius: 4px;
+      }
+      .resume-info p {
+        margin: 5px 0;
+        color: #1e40af;
+      }
+      .footer {
+        background-color: #f9fafb;
+        padding: 20px;
+        text-align: center;
+        color: #6b7280;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>⏸️ Daily Limit Reached</h1>
+      </div>
+
+      <div class="content">
+        <p>Your WhaSender task has been paused because the daily message limit has been reached.</p>
+
+        <div class="alert-box">
+          <p>
+            <strong>Task #{{taskId}}</strong> paused to protect your WhatsApp account from bans.
+          </p>
+        </div>
+
+        <div class="stats">
+          <h3 style="margin: 0 0 10px 0; color: #111827">Today's Progress</h3>
+          <div class="stats-grid">
+            <div class="stat-item">
+              <div class="stat-value">{{sentToday}}</div>
+              <div class="stat-label">Sent Today</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">{{dailyLimit}}</div>
+              <div class="stat-label">Daily Limit</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">{{remaining}}</div>
+              <div class="stat-label">Remaining Messages</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">100%</div>
+              <div class="stat-label">Limit Reached</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="resume-info">
+          <p><strong>✅ No action needed!</strong></p>
+          <p>Your task will automatically resume tomorrow at <strong>{{resumeTime}}</strong>.</p>
+          <p>The remaining {{remaining}} messages will be sent starting tomorrow.</p>
+        </div>
+
+        <div style="margin-top: 20px;">
+          <h3 style="color: #111827">Why was this paused?</h3>
+          <p style="color: #6b7280; line-height: 1.6">
+            WhatsApp has strict limits on the number of messages you can send per day.
+            To protect your account from being banned, WhaSender automatically pauses
+            tasks when the daily limit is reached. Your task will continue tomorrow.
+          </p>
+        </div>
+
+        <div style="margin-top: 20px;">
+          <h3 style="color: #111827">What happens next?</h3>
+          <ol style="color: #6b7280; line-height: 1.8">
+            <li>Your daily counter will reset at midnight</li>
+            <li>Task will auto-resume at 9:00 AM IST tomorrow</li>
+            <li>Sending will continue from where it left off</li>
+            <li>You'll receive a notification when it resumes</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="footer">
+        <p>
+          This is an automated message from WhaSender<br />
+          <a href="#" style="color: #3b82f6">View Dashboard</a>
+        </p>
+      </div>
+    </div>
+  </body>
+</html>

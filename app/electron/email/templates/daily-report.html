@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: #007bff; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+    .content { background: #f9f9f9; padding: 20px; border: 1px solid #ddd; border-radius: 0 0 5px 5px; }
+    .stats { display: flex; justify-content: space-around; margin: 20px 0; }
+    .stat-box { background: white; padding: 15px; text-align: center; border-radius: 5px; flex: 1; margin: 0 5px; border: 1px solid #ddd; }
+    .stat-number { font-size: 32px; font-weight: bold; color: #007bff; }
+    .stat-label { color: #666; font-size: 14px; }
+    .info-row { margin: 10px 0; padding: 10px; background: white; border-left: 3px solid #007bff; }
+    .task-list { background: white; padding: 15px; margin: 15px 0; border: 1px solid #ddd; border-radius: 5px; }
+    .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📊 Daily Report</h1>
+      <p style="margin: 0;">{{date}}</p>
+    </div>
+    <div class="content">
+      <h2>Summary</h2>
+
+      <div class="stats">
+        <div class="stat-box">
+          <div class="stat-number" style="color: #28a745;">{{totalSent}}</div>
+          <div class="stat-label">Messages Sent</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-number" style="color: #007bff;">{{tasksCompleted}}</div>
+          <div class="stat-label">Tasks Completed</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-number" style="color: #28a745;">{{successRate}}%</div>
+          <div class="stat-label">Success Rate</div>
+        </div>
+      </div>
+
+      <div class="info-row">
+        <strong>Daily Limit:</strong> {{dailyLimit}} messages
+      </div>
+
+      <div class="info-row">
+        <strong>Remaining Today:</strong> {{remainingToday}} messages
+      </div>
+
+      <div class="info-row">
+        <strong>Account Age:</strong> {{accountAge}} days
+      </div>
+
+      <div class="info-row">
+        <strong>Operating Window:</strong> {{operatingWindow}}
+      </div>
+
+      {{#if hasTasks}}
+      <div class="task-list">
+        <h3>Today's Tasks</h3>
+        {{tasksList}}
+      </div>
+      {{/if}}
+
+      <p style="margin-top: 20px; color: #666; font-size: 14px;">
+        This is your automated daily report. You will receive this email every day at 9:00 PM IST if any messages were sent.
+      </p>
+    </div>
+    <div class="footer">
+      <p>WhaSender - Professional WhatsApp Messaging</p>
+    </div>
+  </div>
+</body>
+</html>

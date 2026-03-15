@@ -1,0 +1,24 @@
+{
+  "name": "whasender",
+  "version": "1.0.0",
+  "description": "WhatsApp bulk messaging application with anti-ban protection",
+  "private": true,
+  "workspaces": [
+    "app",
+    "auth-server"
+  ],
+  "scripts": {
+    "install:all": "npm install"
+  },
+  "keywords": [
+    "whatsapp",
+    "bulk",
+    "messaging",
+    "electron"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron-rebuild": "^3.2.9"
+  }
+}

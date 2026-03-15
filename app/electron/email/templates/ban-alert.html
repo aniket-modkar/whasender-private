@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: #dc3545; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+    .content { background: #f9f9f9; padding: 20px; border: 1px solid #ddd; border-radius: 0 0 5px 5px; }
+    .warning { background: #fff3cd; padding: 15px; border-left: 3px solid #ffc107; margin: 15px 0; }
+    .info-row { margin: 10px 0; padding: 10px; background: white; border-left: 3px solid #dc3545; }
+    .advice { background: #d1ecf1; padding: 15px; border-left: 3px solid #17a2b8; margin: 15px 0; }
+    .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🚨 Ban/Rate Limit Detected</h1>
+    </div>
+    <div class="content">
+      <div class="warning">
+        <strong>⚠️ WhatsApp has detected unusual activity and may have restricted your account.</strong>
+      </div>
+
+      <p>Your task has been automatically paused to prevent further restrictions.</p>
+
+      <div class="info-row">
+        <strong>Task ID:</strong> #{{taskId}}
+      </div>
+
+      <div class="info-row">
+        <strong>Messages Sent Before Detection:</strong> {{sentSoFar}}
+      </div>
+
+      <div class="info-row">
+        <strong>Detected At:</strong> {{detectedAt}}
+      </div>
+
+      <div class="advice">
+        <strong>📋 Recommended Actions:</strong>
+        <ul>
+          <li>Wait 24-48 hours before resuming</li>
+          <li>Do not attempt to send messages manually from your phone</li>
+          <li>Check your WhatsApp account for any restrictions</li>
+          <li>Consider reducing your daily message limit</li>
+          <li>Review your anti-ban settings for more conservative delays</li>
+        </ul>
+      </div>
+
+      <p style="color: #666; font-size: 14px;">
+        Note: Your task will remain paused. You can resume it manually from the app after waiting the recommended time period.
+      </p>
+    </div>
+    <div class="footer">
+      <p>WhaSender - Professional WhatsApp Messaging</p>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,319 @@
+import { useEffect, useState } from 'react';
+import {
+  ShieldCheckIcon,
+  UserCircleIcon,
+  CheckCircleIcon,
+  ExclamationCircleIcon,
+  ArrowPathIcon,
+  Cog6ToothIcon,
+} from '@heroicons/react/24/outline';
+import { waClearSession, waGetStatus } from '../lib/ipc';
+import useAuthStore from '../stores/authStore';
+
+function Settings() {
+  const { user } = useAuthStore();
+  const [activeTab, setActiveTab] = useState('antiban'); // antiban, account
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState({ type: '', text: '' });
+
+  // WhatsApp Status
+  const [waStatus, setWaStatus] = useState(null);
+
+  // Load status
+  useEffect(() => {
+    loadWaStatus();
+  }, []);
+
+  const loadWaStatus = async () => {
+    try {
+      const result = await waGetStatus();
+      if (result.success) {
+        setWaStatus(result);
+      }
+    } catch (error) {
+      console.error('Error loading WhatsApp status:', error);
+    }
+  };
+
+  const showMessage = (type, text) => {
+    setMessage({ type, text });
+    setTimeout(() => setMessage({ type: '', text: '' }), 5000);
+  };
+
+  // Clear WhatsApp Session
+  const handleClearSession = async () => {
+    if (!window.confirm('Are you sure you want to clear WhatsApp session? You will need to scan QR code again.')) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await waClearSession();
+
+      if (result.success) {
+        showMessage('success', 'WhatsApp session cleared. Please restart the app.');
+        await loadWaStatus();
+      } else {
+        showMessage('error', result.error || 'Failed to clear session');
+      }
+    } catch (error) {
+      showMessage('error', error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="p-6 lg:p-8">
+      <div className="max-w-5xl mx-auto">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-white">Settings</h1>
+          <p className="text-gray-400 mt-2">Configure your WhaSender application</p>
+        </div>
+
+        {/* Message Banner */}
+        {message.text && (
+          <div
+            className={`mb-6 p-4 rounded-lg border flex items-start gap-3 ${
+              message.type === 'success'
+                ? 'bg-green-500/10 border-green-500/20'
+                : 'bg-red-500/10 border-red-500/20'
+            }`}
+          >
+            {message.type === 'success' ? (
+              <CheckCircleIcon className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
+            ) : (
+              <ExclamationCircleIcon className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+            )}
+            <p className={`text-sm ${message.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
+              {message.text}
+            </p>
+          </div>
+        )}
+
+        {/* Tabs */}
+        <div className="flex gap-2 mb-6 border-b border-gray-700">
+          <button
+            onClick={() => setActiveTab('antiban')}
+            className={`px-6 py-3 font-medium transition-colors relative ${
+              activeTab === 'antiban'
+                ? 'text-green-500'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <ShieldCheckIcon className="w-5 h-5" />
+              Anti-Ban
+            </div>
+            {activeTab === 'antiban' && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-green-500"></div>
+            )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('account')}
+            className={`px-6 py-3 font-medium transition-colors relative ${
+              activeTab === 'account'
+                ? 'text-green-500'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <UserCircleIcon className="w-5 h-5" />
+              Account
+            </div>
+            {activeTab === 'account' && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-green-500"></div>
+            )}
+          </button>
+        </div>
+
+        {/* Anti-Ban Settings Tab */}
+        {activeTab === 'antiban' && (
+          <div className="bg-gray-800 rounded-lg border border-gray-700">
+            <div className="p-6 border-b border-gray-700">
+              <h2 className="text-lg font-semibold text-white">Anti-Ban Configuration</h2>
+              <p className="text-sm text-gray-400 mt-1">
+                View current anti-ban settings (configured automatically)
+              </p>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Info Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="p-6 bg-gray-900 rounded-lg border border-gray-700">
+                  <div className="flex items-center gap-3 mb-3">
+                    <Cog6ToothIcon className="w-6 h-6 text-green-500" />
+                    <h3 className="font-semibold text-white">Message Delays</h3>
+                  </div>
+                  <ul className="space-y-2 text-sm text-gray-300">
+                    <li>• Random delays: 45-120 seconds</li>
+                    <li>• Weighted distribution (human-like)</li>
+                    <li>• Typing indicators enabled</li>
+                  </ul>
+                </div>
+
+                <div className="p-6 bg-gray-900 rounded-lg border border-gray-700">
+                  <div className="flex items-center gap-3 mb-3">
+                    <Cog6ToothIcon className="w-6 h-6 text-blue-500" />
+                    <h3 className="font-semibold text-white">Batch Processing</h3>
+                  </div>
+                  <ul className="space-y-2 text-sm text-gray-300">
+                    <li>• Batch size: 5-12 messages</li>
+                    <li>• Pause duration: 5-15 minutes</li>
+                    <li>• Random batch sizes</li>
+                  </ul>
+                </div>
+
+                <div className="p-6 bg-gray-900 rounded-lg border border-gray-700">
+                  <div className="flex items-center gap-3 mb-3">
+                    <Cog6ToothIcon className="w-6 h-6 text-purple-500" />
+                    <h3 className="font-semibold text-white">Time Windows</h3>
+                  </div>
+                  <ul className="space-y-2 text-sm text-gray-300">
+                    <li>• Operating hours: 9 AM - 8 PM IST</li>
+                    <li>• Auto-pause outside hours</li>
+                    <li>• Auto-resume when window opens</li>
+                  </ul>
+                </div>
+
+                <div className="p-6 bg-gray-900 rounded-lg border border-gray-700">
+                  <div className="flex items-center gap-3 mb-3">
+                    <Cog6ToothIcon className="w-6 h-6 text-yellow-500" />
+                    <h3 className="font-semibold text-white">Account Warmup</h3>
+                  </div>
+                  <ul className="space-y-2 text-sm text-gray-300">
+                    <li>• Days 1-3: 20 messages/day</li>
+                    <li>• Days 4-7: 50 messages/day</li>
+                    <li>• Days 8-14: 100 messages/day</li>
+                    <li>• Days 15-30: 200 messages/day</li>
+                    <li>• Days 31-60: 350 messages/day</li>
+                    <li>• Days 61-90: 500 messages/day</li>
+                    <li>• Days 91+: 700 messages/day</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                <p className="text-sm text-blue-300">
+                  ℹ️ Anti-ban settings are optimized automatically. These settings cannot be changed to ensure maximum account safety.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Account Settings Tab */}
+        {activeTab === 'account' && (
+          <div className="bg-gray-800 rounded-lg border border-gray-700">
+            <div className="p-6 border-b border-gray-700">
+              <h2 className="text-lg font-semibold text-white">Account Information</h2>
+              <p className="text-sm text-gray-400 mt-1">
+                View your account details and manage WhatsApp session
+              </p>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* User Info */}
+              <div>
+                <h3 className="text-sm font-medium text-gray-400 mb-3">User Details</h3>
+                <div className="bg-gray-900 rounded-lg border border-gray-700 p-6 space-y-4">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-400">Name</span>
+                    <span className="text-sm text-white font-medium">{user?.name || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-400">Email</span>
+                    <span className="text-sm text-white font-medium">{user?.email || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-400">Account Status</span>
+                    <span className={`text-sm font-semibold uppercase ${
+                      user?.isActive !== false ? 'text-green-400' : 'text-red-400'
+                    }`}>
+                      {user?.isActive !== false ? 'Active' : 'Inactive'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-400">Plan</span>
+                    <span className="text-sm text-green-400 font-semibold uppercase">
+                      {user?.plan || 'N/A'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-400">Daily Message Limit</span>
+                    <span className="text-sm text-white font-medium">
+                      {user?.maxDailyMessages || 'N/A'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-400">Expires</span>
+                    <span className="text-sm text-white font-medium">
+                      {user?.expiresAt
+                        ? new Date(user.expiresAt).toLocaleDateString()
+                        : 'Never'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* WhatsApp Info */}
+              <div>
+                <h3 className="text-sm font-medium text-gray-400 mb-3">WhatsApp Connection</h3>
+                <div className="bg-gray-900 rounded-lg border border-gray-700 p-6 space-y-4">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-400">Status</span>
+                    <span
+                      className={`text-sm font-medium ${
+                        waStatus?.isConnected ? 'text-green-400' : 'text-red-400'
+                      }`}
+                    >
+                      {waStatus?.isConnected ? 'Connected' : 'Disconnected'}
+                    </span>
+                  </div>
+                  {waStatus?.phoneNumber && (
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-400">Phone Number</span>
+                      <span className="text-sm text-white font-medium">
+                        +{waStatus.phoneNumber}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div>
+                <h3 className="text-sm font-medium text-gray-400 mb-3">Actions</h3>
+                <div className="space-y-3">
+                  <button
+                    onClick={handleClearSession}
+                    disabled={loading}
+                    className="w-full flex items-center justify-between p-4 bg-gray-900 hover:bg-gray-850 border border-gray-700 rounded-lg transition-colors"
+                  >
+                    <div>
+                      <p className="text-sm font-medium text-white">Clear WhatsApp Session</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Log out and clear stored session data
+                      </p>
+                    </div>
+                    <ArrowPathIcon className="w-5 h-5 text-gray-400" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+                <p className="text-sm text-yellow-300">
+                  ⚠️ Clearing WhatsApp session will require you to scan the QR code again. The app needs to be restarted after clearing.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default Settings;

@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: whasender-auth
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: MONGO_URI
+        sync: false  # Set manually in Render dashboard
+      - key: JWT_SECRET
+        generateValue: true
+        sync: false
+      - key: JWT_EXPIRY
+        value: 5d
+      - key: ALLOWED_ORIGINS
+        sync: false  # Set manually in Render dashboard

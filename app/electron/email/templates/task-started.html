@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: #25D366; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+    .content { background: #f9f9f9; padding: 20px; border: 1px solid #ddd; border-radius: 0 0 5px 5px; }
+    .info-row { margin: 10px 0; padding: 10px; background: white; border-left: 3px solid #25D366; }
+    .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📤 Task Started</h1>
+    </div>
+    <div class="content">
+      <p>Your WhaSender task has started successfully.</p>
+
+      <div class="info-row">
+        <strong>Task ID:</strong> #{{taskId}}
+      </div>
+
+      <div class="info-row">
+        <strong>Total Numbers:</strong> {{totalNumbers}}
+      </div>
+
+      <div class="info-row">
+        <strong>Message Preview:</strong><br>
+        <em>{{messagePreview}}</em>
+      </div>
+
+      <div class="info-row">
+        <strong>Started At:</strong> {{startedAt}}
+      </div>
+
+      <p style="margin-top: 20px; color: #666;">
+        You will receive another email when the task completes.
+      </p>
+    </div>
+    <div class="footer">
+      <p>WhaSender - Professional WhatsApp Messaging</p>
+    </div>
+  </div>
+</body>
+</html>

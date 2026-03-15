@@ -1,0 +1,53 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build outputs
+app/dist/
+app/release/
+admin-portal/client/dist/
+admin-portal/client/.next/
+
+# Environment files
+.env
+.env.local
+.env.production
+*.env
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Database
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+
+# Auth session files
+auth-session/
+WhatsApp/
+.wwebjs_auth/
+.wwebjs_cache/
+
+# Electron
+app/out/
+
+# Testing
+coverage/
+
+# Temporary
+tmp/
+temp/
+*.tmp
