@@ -76,7 +76,8 @@ function createSystemTray() {
 
 function setupAutoUpdater() {
   // Configure auto-updater
-  const isDev = process.env.NODE_ENV !== 'production';
+  // Use app.isPackaged to reliably detect production
+  const isDev = !app.isPackaged;
 
   // Don't check for updates in development
   if (isDev) {
@@ -208,13 +209,19 @@ function createWindow() {
 
   // In development, load from Vite dev server
   // In production, load from built files
-  const isDev = process.env.NODE_ENV !== 'production';
+  // Use app.isPackaged to reliably detect production (when app is packaged by electron-builder)
+  const isDev = !app.isPackaged;
 
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    const indexPath = path.join(__dirname, '../dist/index.html');
+    console.log('Loading from:', indexPath);
+    console.log('__dirname:', __dirname);
+    mainWindow.loadFile(indexPath);
+    // Open DevTools in production for debugging
+    mainWindow.webContents.openDevTools();
   }
 
   // Prevent window from closing, minimize to tray instead

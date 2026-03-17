@@ -1,6 +1,6 @@
 {
   "name": "whasender-app",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "WhaSender Electron desktop application",
   "main": "electron/main.js",
   "private": true,
