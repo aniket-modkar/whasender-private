@@ -65,8 +65,8 @@ export const taskPause = () => {
   return window.electronAPI.invoke('task:pause');
 };
 
-export const taskResume = () => {
-  return window.electronAPI.invoke('task:resume');
+export const taskResume = (taskId) => {
+  return window.electronAPI.invoke('task:resume', taskId);
 };
 
 export const taskStop = (taskId) => {

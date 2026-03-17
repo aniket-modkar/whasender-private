@@ -283,9 +283,14 @@ function registerIpcHandlers(mainWindow) {
     }
   });
 
-  ipcMain.handle('task:resume', async () => {
+  ipcMain.handle('task:resume', async (event, taskId) => {
     try {
-      return taskExecutor.resume();
+      // Use the robust resumeTask method if taskId provided
+      if (taskId) {
+        return await taskExecutor.resumeTask(taskId);
+      }
+      // Otherwise use old resume method for backward compatibility
+      return await taskExecutor.resume();
     } catch (error) {
       return {
         success: false,
@@ -302,6 +307,11 @@ function registerIpcHandlers(mainWindow) {
 
   // Start daily auto-resume scheduler for paused_limit tasks
   scheduler.startDailyResumeScheduler();
+
+  // Recover state for interrupted tasks (app restart)
+  taskExecutor.recoverState().catch(error => {
+    console.error('Failed to recover task state:', error);
+  });
 
   // Task creation handler (moved here to access scheduler and executor)
   ipcMain.handle('task:create', async (event, data) => {

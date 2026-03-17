@@ -142,7 +142,8 @@ function Monitor() {
   const handleResume = async () => {
     setActionLoading(true);
     try {
-      const result = await taskResume();
+      // Pass taskId for more robust resuming
+      const result = await taskResume(activeTask?.id);
       if (result.success) {
         addLog('success', 'Task resumed');
         await loadActiveTask();
@@ -439,6 +440,22 @@ function Monitor() {
                 <p className="text-sm font-medium text-red-400">Rate Limit / Ban Detected</p>
                 <p className="text-xs text-red-300 mt-1">
                   WhatsApp has detected unusual activity. Please wait before resuming to avoid permanent ban.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Manual Pause Warning */}
+          {activeTask.status === 'paused_manual' && (
+            <div className="flex items-start gap-3 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg mb-6">
+              <ExclamationTriangleIcon className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-blue-400">⏸️ Task Paused</p>
+                <p className="text-xs text-blue-300 mt-1">
+                  {activeTask.pause_reason || 'Task has been paused. Click Resume to continue from where it left off.'}
+                  {activeTask.total_numbers - activeTask.sent_count > 0 &&
+                    ` ${activeTask.total_numbers - activeTask.sent_count} messages remaining.`
+                  }
                 </p>
               </div>
             </div>

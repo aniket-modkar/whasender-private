@@ -34,6 +34,114 @@ class TaskExecutor {
     this.shouldStop = false;
   }
 
+  // Recover state from database (call on app startup)
+  async recoverState() {
+    try {
+      console.log('TaskExecutor: Checking for interrupted tasks...');
+
+      // Check for tasks that were running or paused when app closed
+      const interruptedTask = await taskManager.getActiveTask();
+
+      if (!interruptedTask) {
+        console.log('TaskExecutor: No interrupted tasks found');
+        return;
+      }
+
+      const status = interruptedTask.status;
+      console.log(`TaskExecutor: Found interrupted task #${interruptedTask.id} with status: ${status}`);
+
+      // Handle different recovery scenarios
+      if (status === 'running') {
+        // Task was running when app closed - mark as paused_manual
+        console.log('TaskExecutor: Task was running when app closed, marking as paused');
+        await taskManager.updateStatus(
+          interruptedTask.id,
+          'paused_manual',
+          'App was closed while task was running. Click Resume to continue.'
+        );
+        insertLog(
+          interruptedTask.id,
+          'warn',
+          'Task paused due to app restart. Ready to resume.'
+        );
+      } else if (status.startsWith('paused_')) {
+        // Task was already paused - keep it paused
+        console.log('TaskExecutor: Task remains paused, can be resumed from UI');
+        insertLog(
+          interruptedTask.id,
+          'info',
+          'App restarted. Task remains paused and can be resumed.'
+        );
+      }
+
+      // Emit status to UI so it shows the current state
+      this.emitStatusChange(
+        interruptedTask.id,
+        status,
+        status.startsWith('paused_') ? status : 'paused_manual',
+        interruptedTask.pause_reason
+      );
+
+      console.log('TaskExecutor: State recovery complete');
+    } catch (error) {
+      console.error('TaskExecutor: Error recovering state:', error);
+    }
+  }
+
+  // Resume a task from any paused state or database
+  async resumeTask(taskId) {
+    try {
+      console.log(`TaskExecutor: Attempting to resume task #${taskId}`);
+
+      // If already running something else, reject
+      if (this.isRunning && this.currentTask && this.currentTask.id !== taskId) {
+        return {
+          success: false,
+          error: 'Another task is already running',
+        };
+      }
+
+      // Get task from database
+      const task = await getTask(taskId);
+
+      if (!task) {
+        return {
+          success: false,
+          error: 'Task not found',
+        };
+      }
+
+      // Check if task is in a resumable state
+      if (!task.status.startsWith('paused_') && task.status !== 'running') {
+        return {
+          success: false,
+          error: `Task cannot be resumed from status: ${task.status}`,
+        };
+      }
+
+      // If executor is currently running and paused, just unpause
+      if (this.isRunning && this.isPaused && this.currentTask?.id === taskId) {
+        console.log('TaskExecutor: Resuming paused execution');
+        this.isPaused = false;
+        await taskManager.updateStatus(taskId, 'running');
+        this.emitStatusChange(taskId, task.status, 'running');
+        insertLog(taskId, 'info', 'Task resumed');
+        return { success: true };
+      }
+
+      // Otherwise, start execution from where it left off
+      console.log('TaskExecutor: Restarting task execution from saved state');
+      return await this.executeTask(taskId);
+
+    } catch (error) {
+      console.error('TaskExecutor: Error resuming task:', error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
   // Start task execution
   async executeTask(taskId) {
     try {
@@ -419,38 +527,72 @@ class TaskExecutor {
   }
 
   // Pause execution
-  pause(reason = 'manual') {
-    if (!this.isRunning) {
+  async pause(reason = 'manual') {
+    // Check in-memory state first
+    if (!this.isRunning || !this.currentTask) {
+      // If not running in memory, check database for active task
+      const activeTask = await taskManager.getActiveTask();
+      if (!activeTask) {
+        return {
+          success: false,
+          error: 'No active task found',
+        };
+      }
+
+      // Task exists in database but not in memory - update database directly
+      if (activeTask.status === 'running') {
+        const pauseReason = reason === 'manual' ? 'Paused by user' : reason;
+        await taskManager.updateStatus(activeTask.id, 'paused_manual', pauseReason);
+        insertLog(activeTask.id, 'info', `Task paused: ${pauseReason}`);
+        this.emitStatusChange(activeTask.id, 'running', 'paused_manual', pauseReason);
+        return { success: true };
+      }
+
       return {
         success: false,
-        error: 'No task is running',
+        error: `Task is in ${activeTask.status} status, cannot pause`,
       };
     }
 
+    // Normal pause for running task
     this.isPaused = true;
     this.delayEngine.cancel(); // Cancel current sleep
 
-    if (this.currentTask) {
-      const pauseReason = reason === 'manual' ? 'Paused by user' : reason;
-      taskManager.updateStatus(this.currentTask.id, 'paused_manual', pauseReason);
-      this.emitStatusChange(this.currentTask.id, 'running', 'paused_manual', pauseReason);
-      insertLog(this.currentTask.id, 'info', `Task paused: ${pauseReason}`);
-    }
+    const pauseReason = reason === 'manual' ? 'Paused by user' : reason;
+    await taskManager.updateStatus(this.currentTask.id, 'paused_manual', pauseReason);
+    this.emitStatusChange(this.currentTask.id, 'running', 'paused_manual', pauseReason);
+    insertLog(this.currentTask.id, 'info', `Task paused: ${pauseReason}`);
 
     return {
       success: true,
     };
   }
 
-  // Resume execution
-  resume() {
-    if (!this.isRunning) {
+  // Resume execution (use resumeTask for more robust resuming)
+  async resume() {
+    // Check in-memory state first
+    if (!this.isRunning || !this.currentTask) {
+      // If not running in memory, check database for paused task
+      const activeTask = await taskManager.getActiveTask();
+      if (!activeTask) {
+        return {
+          success: false,
+          error: 'No active task found to resume',
+        };
+      }
+
+      // Use the new resumeTask method for database-based resume
+      if (activeTask.status.startsWith('paused_')) {
+        return await this.resumeTask(activeTask.id);
+      }
+
       return {
         success: false,
-        error: 'No task is running',
+        error: `Task is in ${activeTask.status} status, cannot resume`,
       };
     }
 
+    // Normal resume for paused task
     if (!this.isPaused) {
       return {
         success: false,
@@ -459,12 +601,9 @@ class TaskExecutor {
     }
 
     this.isPaused = false;
-
-    if (this.currentTask) {
-      taskManager.updateStatus(this.currentTask.id, 'running');
-      this.emitStatusChange(this.currentTask.id, 'paused_manual', 'running');
-      insertLog(this.currentTask.id, 'info', 'Task resumed');
-    }
+    await taskManager.updateStatus(this.currentTask.id, 'running');
+    this.emitStatusChange(this.currentTask.id, 'paused_manual', 'running');
+    insertLog(this.currentTask.id, 'info', 'Task resumed');
 
     return {
       success: true,
