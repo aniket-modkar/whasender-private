@@ -10,7 +10,9 @@ const userSchema = new mongoose.Schema({
   },
   passwordHash: {
     type: String,
-    required: true,
+  },
+  password: {
+    type: String,
   },
   name: {
     type: String,
@@ -39,7 +41,6 @@ const userSchema = new mongoose.Schema({
   },
   expiresAt: {
     type: Date,
-    required: true,
   },
 });
 

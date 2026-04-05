@@ -9,6 +9,8 @@ import {
   ArrowRightOnRectangleIcon,
   Bars3Icon,
   XMarkIcon,
+  UsersIcon,
+  DocumentDuplicateIcon,
 } from '@heroicons/react/24/outline';
 import { authLogout } from '../lib/ipc';
 import useAuthStore from '../stores/authStore';
@@ -21,6 +23,8 @@ function Layout() {
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
     { name: 'New Task', href: '/new-task', icon: PlusCircleIcon },
+    { name: 'Contacts', href: '/contacts', icon: UsersIcon },
+    { name: 'Templates', href: '/templates', icon: DocumentDuplicateIcon },
     { name: 'Monitor', href: '/monitor', icon: ChartBarIcon },
     { name: 'Reports', href: '/reports', icon: DocumentTextIcon },
     { name: 'Settings', href: '/settings', icon: Cog6ToothIcon },

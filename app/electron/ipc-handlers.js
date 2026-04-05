@@ -12,6 +12,7 @@ const smtpService = require('./email/smtp-service');
 const notificationService = require('./notifications/notification-service');
 const { getMediaManager } = require('./media/media-manager');
 const contactsManager = require('./contacts/contacts-manager');
+const templatesManager = require('./templates/templates-manager');
 
 function registerIpcHandlers(mainWindow) {
   // Test handler
@@ -877,7 +878,103 @@ function registerIpcHandlers(mainWindow) {
     }
   });
 
-  // More handlers will be registered here as we build out the app
+  // === Contact Groups Handlers ===
+  ipcMain.handle('contacts:create-group', async (event, { name, description }) => {
+    try {
+      return contactsManager.createGroup({ name, description });
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('contacts:get-groups', async () => {
+    try {
+      return contactsManager.getGroups();
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('contacts:update-group', async (event, { id, name, description }) => {
+    try {
+      return contactsManager.updateGroup(id, { name, description });
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('contacts:delete-group', async (event, id) => {
+    try {
+      return contactsManager.deleteGroup(id);
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('contacts:add-to-group', async (event, { groupId, contactIds }) => {
+    try {
+      return contactsManager.addContactsToGroup(groupId, contactIds);
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('contacts:remove-from-group', async (event, { groupId, contactIds }) => {
+    try {
+      return contactsManager.removeContactsFromGroup(groupId, contactIds);
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('contacts:get-by-group', async (event, groupId) => {
+    try {
+      return contactsManager.getContactsByGroup(groupId);
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  // === Templates Handlers ===
+  ipcMain.handle('templates:create', async (event, data) => {
+    try {
+      return templatesManager.createTemplate(data);
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('templates:get-all', async () => {
+    try {
+      return templatesManager.getTemplates();
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('templates:get', async (event, id) => {
+    try {
+      return templatesManager.getTemplate(id);
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('templates:update', async (event, { id, ...data }) => {
+    try {
+      return templatesManager.updateTemplate(id, data);
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('templates:delete', async (event, id) => {
+    try {
+      return templatesManager.deleteTemplate(id);
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
 }
 
 module.exports = { registerIpcHandlers };

@@ -34,12 +34,13 @@ router.post('/login', loginLimiter, async (req, res) => {
     }
 
     // Check if account has expired
-    if (new Date() > user.expiresAt) {
+    if (user.expiresAt && new Date() > user.expiresAt) {
       return res.status(403).json({ error: 'Account has expired' });
     }
 
-    // Verify password
-    const isValidPassword = await bcrypt.compare(password, user.passwordHash);
+    // Verify password (support both passwordHash and password field names)
+    const storedHash = user.passwordHash || user.password;
+    const isValidPassword = await bcrypt.compare(password, storedHash);
 
     if (!isValidPassword) {
       return res.status(401).json({ error: 'Invalid credentials' });

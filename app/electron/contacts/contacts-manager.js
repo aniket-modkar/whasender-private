@@ -9,7 +9,7 @@ class ContactsManager {
         INSERT INTO contacts (phone, name, tags, updated_at)
         VALUES (?, ?, ?, datetime('now'))
         ON CONFLICT(phone) DO UPDATE SET
-          name = COALESCE(excluded.name, name),
+          name = CASE WHEN excluded.name != '' THEN excluded.name ELSE name END,
           tags = excluded.tags,
           updated_at = datetime('now')
       `);
@@ -29,39 +29,38 @@ class ContactsManager {
     }
   }
 
-  // Import multiple contacts (bulk insert)
+  // Import multiple contacts — returns newContacts (truly new) + duplicates (already existed)
   importContacts(contacts) {
     try {
       const db = getDatabase();
-      const stmt = db.prepare(`
+
+      const checkStmt = db.prepare('SELECT id FROM contacts WHERE phone = ?');
+      const upsertStmt = db.prepare(`
         INSERT INTO contacts (phone, name, tags, updated_at)
         VALUES (?, ?, ?, datetime('now'))
         ON CONFLICT(phone) DO UPDATE SET
-          name = COALESCE(excluded.name, name),
-          tags = excluded.tags,
+          name = CASE WHEN excluded.name != '' THEN excluded.name ELSE name END,
           updated_at = datetime('now')
       `);
 
-      let imported = 0;
-      let updated = 0;
+      let newContacts = 0;
+      let duplicates = 0;
       let errors = [];
 
       const transaction = db.transaction(() => {
         for (const contact of contacts) {
           try {
-            const result = stmt.run(
+            const existing = checkStmt.get(contact.phone);
+            if (existing) {
+              duplicates++;
+            } else {
+              newContacts++;
+            }
+            upsertStmt.run(
               contact.phone,
               contact.name || '',
               JSON.stringify(contact.tags || [])
             );
-
-            if (result.changes > 0) {
-              if (result.lastInsertRowid) {
-                imported++;
-              } else {
-                updated++;
-              }
-            }
           } catch (err) {
             errors.push({ phone: contact.phone, error: err.message });
           }
@@ -70,12 +69,12 @@ class ContactsManager {
 
       transaction();
 
-      console.log(`Imported ${imported} new contacts, updated ${updated} existing contacts`);
+      console.log(`Imported ${newContacts} new, ${duplicates} duplicates`);
 
       return {
         success: true,
-        imported,
-        updated,
+        newContacts,
+        duplicates,
         errors,
         total: contacts.length,
       };
@@ -88,60 +87,48 @@ class ContactsManager {
     }
   }
 
-  // Get all contacts with pagination and search
-  getContacts({ limit = 100, offset = 0, search = '', tags = [] }) {
+  // Get contacts with pagination and search — sorted by id ASC for consistent serial numbers
+  getContacts({ limit = 50, offset = 0, search = '', groupId = null } = {}) {
     try {
       const db = getDatabase();
 
-      let query = 'SELECT * FROM contacts WHERE 1=1';
+      let query = 'SELECT c.* FROM contacts c';
       const params = [];
 
-      // Add search filter
+      if (groupId) {
+        query += ' INNER JOIN contact_group_members m ON c.id = m.contact_id AND m.group_id = ?';
+        params.push(groupId);
+      }
+
+      query += ' WHERE 1=1';
+
       if (search) {
-        query += ' AND (phone LIKE ? OR name LIKE ?)';
+        query += ' AND (c.phone LIKE ? OR c.name LIKE ?)';
         params.push(`%${search}%`, `%${search}%`);
       }
 
-      // Add tags filter
-      if (tags.length > 0) {
-        const tagConditions = tags.map(() => 'tags LIKE ?').join(' OR ');
-        query += ` AND (${tagConditions})`;
-        tags.forEach(tag => params.push(`%"${tag}"%`));
-      }
-
-      // Get total count
-      const countStmt = db.prepare(query.replace('SELECT *', 'SELECT COUNT(*) as count'));
+      const countStmt = db.prepare(query.replace('SELECT c.*', 'SELECT COUNT(*) as count'));
       const countResult = countStmt.get(...params);
       const total = countResult.count;
 
-      // Get paginated results
-      query += ' ORDER BY updated_at DESC LIMIT ? OFFSET ?';
+      query += ' ORDER BY c.id ASC LIMIT ? OFFSET ?';
       params.push(limit, offset);
 
-      const stmt = db.prepare(query);
-      const contacts = stmt.all(...params);
-
-      // Parse tags JSON
-      const parsedContacts = contacts.map(contact => ({
-        ...contact,
-        tags: contact.tags ? JSON.parse(contact.tags) : [],
-      }));
+      const contacts = db.prepare(query).all(...params);
 
       return {
         success: true,
-        contacts: parsedContacts,
+        contacts: contacts.map(c => ({
+          ...c,
+          tags: c.tags ? JSON.parse(c.tags) : [],
+        })),
         total,
         limit,
         offset,
       };
     } catch (error) {
       console.error('Error getting contacts:', error);
-      return {
-        success: false,
-        error: error.message,
-        contacts: [],
-        total: 0,
-      };
+      return { success: false, error: error.message, contacts: [], total: 0 };
     }
   }
 
@@ -149,19 +136,13 @@ class ContactsManager {
   getContact(id) {
     try {
       const db = getDatabase();
-      const stmt = db.prepare('SELECT * FROM contacts WHERE id = ?');
-      const contact = stmt.get(id);
+      const contact = db.prepare('SELECT * FROM contacts WHERE id = ?').get(id);
 
-      if (!contact) {
-        return { success: false, error: 'Contact not found' };
-      }
+      if (!contact) return { success: false, error: 'Contact not found' };
 
       return {
         success: true,
-        contact: {
-          ...contact,
-          tags: contact.tags ? JSON.parse(contact.tags) : [],
-        },
+        contact: { ...contact, tags: contact.tags ? JSON.parse(contact.tags) : [] },
       };
     } catch (error) {
       return { success: false, error: error.message };
@@ -172,13 +153,9 @@ class ContactsManager {
   updateContact(id, { name, tags }) {
     try {
       const db = getDatabase();
-      const stmt = db.prepare(`
-        UPDATE contacts
-        SET name = ?, tags = ?, updated_at = datetime('now')
-        WHERE id = ?
-      `);
-
-      stmt.run(name || '', JSON.stringify(tags || []), id);
+      db.prepare(`
+        UPDATE contacts SET name = ?, tags = ?, updated_at = datetime('now') WHERE id = ?
+      `).run(name || '', JSON.stringify(tags || []), id);
 
       return { success: true };
     } catch (error) {
@@ -189,10 +166,7 @@ class ContactsManager {
   // Delete contact
   deleteContact(id) {
     try {
-      const db = getDatabase();
-      const stmt = db.prepare('DELETE FROM contacts WHERE id = ?');
-      stmt.run(id);
-
+      getDatabase().prepare('DELETE FROM contacts WHERE id = ?').run(id);
       return { success: true };
     } catch (error) {
       return { success: false, error: error.message };
@@ -202,24 +176,18 @@ class ContactsManager {
   // Delete multiple contacts
   deleteContacts(ids) {
     try {
-      const db = getDatabase();
       const placeholders = ids.map(() => '?').join(',');
-      const stmt = db.prepare(`DELETE FROM contacts WHERE id IN (${placeholders})`);
-      stmt.run(...ids);
-
+      getDatabase().prepare(`DELETE FROM contacts WHERE id IN (${placeholders})`).run(...ids);
       return { success: true, deleted: ids.length };
     } catch (error) {
       return { success: false, error: error.message };
     }
   }
 
-  // Get contact count
+  // Get total contact count
   getContactCount() {
     try {
-      const db = getDatabase();
-      const stmt = db.prepare('SELECT COUNT(*) as count FROM contacts');
-      const result = stmt.get();
-
+      const result = getDatabase().prepare('SELECT COUNT(*) as count FROM contacts').get();
       return { success: true, count: result.count };
     } catch (error) {
       return { success: false, error: error.message, count: 0 };
@@ -229,30 +197,25 @@ class ContactsManager {
   // Get all unique tags
   getAllTags() {
     try {
-      const db = getDatabase();
-      const stmt = db.prepare('SELECT DISTINCT tags FROM contacts WHERE tags IS NOT NULL AND tags != "[]"');
-      const results = stmt.all();
+      const results = getDatabase()
+        .prepare('SELECT DISTINCT tags FROM contacts WHERE tags IS NOT NULL AND tags != "[]"')
+        .all();
 
       const tagsSet = new Set();
       results.forEach(row => {
-        const tags = JSON.parse(row.tags);
-        tags.forEach(tag => tagsSet.add(tag));
+        JSON.parse(row.tags).forEach(tag => tagsSet.add(tag));
       });
 
-      return {
-        success: true,
-        tags: Array.from(tagsSet).sort(),
-      };
+      return { success: true, tags: Array.from(tagsSet).sort() };
     } catch (error) {
       return { success: false, error: error.message, tags: [] };
     }
   }
 
-  // Export contacts to array format (for task creation)
+  // Export contacts as snapshot for task creation (ordered by id ASC)
   exportContacts(ids = []) {
     try {
       const db = getDatabase();
-
       let query = 'SELECT phone, name FROM contacts';
       const params = [];
 
@@ -262,12 +225,113 @@ class ContactsManager {
         params.push(...ids);
       }
 
-      const stmt = db.prepare(query);
-      const contacts = stmt.all(...params);
+      query += ' ORDER BY id ASC';
+
+      return { success: true, contacts: db.prepare(query).all(...params) };
+    } catch (error) {
+      return { success: false, error: error.message, contacts: [] };
+    }
+  }
+
+  // ─── Groups ───────────────────────────────────────────────────────────────
+
+  createGroup({ name, description = '' }) {
+    try {
+      const result = getDatabase()
+        .prepare('INSERT INTO contact_groups (name, description) VALUES (?, ?)')
+        .run(name, description);
+
+      return { success: true, groupId: result.lastInsertRowid };
+    } catch (error) {
+      if (error.message.includes('UNIQUE'))
+        return { success: false, error: 'A group with this name already exists' };
+      return { success: false, error: error.message };
+    }
+  }
+
+  getGroups() {
+    try {
+      const groups = getDatabase().prepare(`
+        SELECT g.*, COUNT(m.contact_id) as member_count
+        FROM contact_groups g
+        LEFT JOIN contact_group_members m ON g.id = m.group_id
+        GROUP BY g.id
+        ORDER BY g.name ASC
+      `).all();
+
+      return { success: true, groups };
+    } catch (error) {
+      return { success: false, error: error.message, groups: [] };
+    }
+  }
+
+  updateGroup(id, { name, description }) {
+    try {
+      getDatabase().prepare(`
+        UPDATE contact_groups SET name = ?, description = ?, updated_at = datetime('now') WHERE id = ?
+      `).run(name, description || '', id);
+
+      return { success: true };
+    } catch (error) {
+      if (error.message.includes('UNIQUE'))
+        return { success: false, error: 'A group with this name already exists' };
+      return { success: false, error: error.message };
+    }
+  }
+
+  deleteGroup(id) {
+    try {
+      getDatabase().prepare('DELETE FROM contact_groups WHERE id = ?').run(id);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  addContactsToGroup(groupId, contactIds) {
+    try {
+      const db = getDatabase();
+      const stmt = db.prepare(
+        'INSERT OR IGNORE INTO contact_group_members (group_id, contact_id) VALUES (?, ?)'
+      );
+      db.transaction(() => {
+        for (const id of contactIds) stmt.run(groupId, id);
+      })();
+
+      return { success: true, added: contactIds.length };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  removeContactsFromGroup(groupId, contactIds) {
+    try {
+      const placeholders = contactIds.map(() => '?').join(',');
+      getDatabase()
+        .prepare(
+          `DELETE FROM contact_group_members WHERE group_id = ? AND contact_id IN (${placeholders})`
+        )
+        .run(groupId, ...contactIds);
+
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  getContactsByGroup(groupId) {
+    try {
+      const db = getDatabase();
+      const contacts = db.prepare(`
+        SELECT c.* FROM contacts c
+        INNER JOIN contact_group_members m ON c.id = m.contact_id
+        WHERE m.group_id = ?
+        ORDER BY c.id ASC
+      `).all(groupId);
 
       return {
         success: true,
-        contacts,
+        contacts: contacts.map(c => ({ ...c, tags: c.tags ? JSON.parse(c.tags) : [] })),
       };
     } catch (error) {
       return { success: false, error: error.message, contacts: [] };

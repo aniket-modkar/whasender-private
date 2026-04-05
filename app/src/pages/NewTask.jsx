@@ -1,31 +1,44 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  DocumentArrowUpIcon,
   PaperAirplaneIcon,
   CalendarIcon,
   XMarkIcon,
   CheckCircleIcon,
   ExclamationCircleIcon,
+  MagnifyingGlassIcon,
+  UsersIcon,
+  DocumentDuplicateIcon,
+  ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
-import { parseNumbers, taskCreate } from '../lib/ipc';
-import { contactsGetAll, contactsExport, contactsGetCount, contactsImport } from '../lib/contacts-ipc';
+import { taskCreate } from '../lib/ipc';
+import { contactsGetAll, contactsExport, contactsGetGroups, contactsGetByGroup } from '../lib/contacts-ipc';
+import { templatesGetAll } from '../lib/templates-ipc';
 import MediaTypeSelector from '../components/MediaTypeSelector';
 import MediaUpload from '../components/MediaUpload';
 import MessagePreviewModal from '../components/MessagePreviewModal';
 
 function NewTask() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [step, setStep] = useState(1); // 1: Upload, 2: Compose, 3: Schedule
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Step 1: File Upload
-  const [uploadMode, setUploadMode] = useState('file'); // 'file' or 'saved'
-  const [filePath, setFilePath] = useState('');
+  // Template picker
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [templates, setTemplates] = useState([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [showTemplateWarning, setShowTemplateWarning] = useState(null); // holds template to apply after confirmation
+
+  // Step 1: Contact Selection
   const [parseResult, setParseResult] = useState(null);
   const [savedContacts, setSavedContacts] = useState([]);
   const [selectedContactIds, setSelectedContactIds] = useState([]);
+  const [contactSearch, setContactSearch] = useState('');
+  const [groups, setGroups] = useState([]);
+  const [rangeStart, setRangeStart] = useState('');
+  const [rangeEnd, setRangeEnd] = useState('');
 
   // Step 2: Message Composer
   const [messageTemplate, setMessageTemplate] = useState('');
@@ -41,146 +54,142 @@ function NewTask() {
   // Preview Modal
   const [showPreviewModal, setShowPreviewModal] = useState(false);
 
-  // Handle file selection
-  const handleFileSelect = async () => {
-    try {
-      // Open file dialog using Electron's dialog API
-      const result = await window.electronAPI.invoke('dialog:open-file', {
-        filters: [
-          { name: 'Spreadsheets', extensions: ['csv', 'xlsx', 'xls'] },
-          { name: 'All Files', extensions: ['*'] },
-        ],
-        properties: ['openFile'],
-      });
-
-      if (!result.canceled && result.filePaths.length > 0) {
-        const selectedPath = result.filePaths[0];
-        setFilePath(selectedPath);
-        await parseFile(selectedPath);
-      }
-    } catch (err) {
-      setError('Failed to open file dialog: ' + err.message);
-    }
-  };
-
-  // Parse the uploaded file
-  const parseFile = async (path) => {
-    setLoading(true);
-    setError('');
-    setParseResult(null);
-
-    try {
-      const result = await parseNumbers(path);
-
-      if (result.success) {
-        setParseResult(result);
-        if (result.numbers.length === 0) {
-          setError('No valid phone numbers found in the file');
-        }
-      } else {
-        setError(result.error || 'Failed to parse file');
-      }
-    } catch (err) {
-      setError('Error parsing file: ' + err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Load saved contacts
-  const loadSavedContacts = async () => {
-    try {
-      const result = await contactsGetAll({ limit: 10000 });
-      if (result.success) {
-        setSavedContacts(result.contacts);
-      }
-    } catch (err) {
-      console.error('Error loading contacts:', err);
-    }
-  };
-
-  // Load saved contacts on mount if user switches to saved mode
+  // Load contacts and groups on mount
   useEffect(() => {
-    if (uploadMode === 'saved') {
-      loadSavedContacts();
-    }
-  }, [uploadMode]);
-
-  // Handle importing file contacts to master database
-  const handleImportToContacts = async () => {
-    if (!parseResult?.numbers) return;
-
-    setLoading(true);
-    try {
-      const result = await contactsImport(parseResult.numbers);
-      if (result.success) {
-        alert(`Successfully imported ${result.imported} new contacts and updated ${result.updated} existing contacts!`);
-        loadSavedContacts();
-      } else {
-        setError(result.error || 'Failed to import contacts');
+    const load = async () => {
+      try {
+        const [cRes, gRes] = await Promise.all([
+          contactsGetAll({ limit: 10000 }),
+          contactsGetGroups(),
+        ]);
+        if (cRes.success) setSavedContacts(cRes.contacts);
+        if (gRes.success) setGroups(gRes.groups);
+      } catch (err) {
+        console.error('Error loading contacts:', err);
       }
+    };
+    load();
+  }, []);
+
+  // Pre-populate Step 2 from "Use in Task" on Templates page
+  useEffect(() => {
+    const tpl = location.state?.template;
+    if (!tpl) return;
+    applyTemplate(tpl);
+    // Clear state so back navigation doesn't re-apply
+    window.history.replaceState({}, '');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Apply a template to Step 2 state
+  const applyTemplate = (tpl) => {
+    setMediaType(tpl.media_type || 'text');
+    setMessageTemplate(tpl.media_type === 'text' ? (tpl.message_body || '') : '');
+    setMediaCaption(tpl.media_type !== 'text' ? (tpl.media_caption || '') : '');
+    setMediaFile(
+      tpl.media_path
+        ? { path: tpl.media_path, fileName: tpl.media_filename, size: tpl.media_size }
+        : null
+    );
+    setShowTemplatePicker(false);
+    setShowTemplateWarning(null);
+  };
+
+  // Open template picker — load templates list
+  const openTemplatePicker = async () => {
+    setTemplatesLoading(true);
+    setShowTemplatePicker(true);
+    try {
+      const res = await templatesGetAll();
+      if (res.success) setTemplates(res.templates || []);
     } catch (err) {
-      setError('Error importing contacts: ' + err.message);
+      console.error('Error loading templates:', err);
     } finally {
-      setLoading(false);
+      setTemplatesLoading(false);
     }
   };
 
-  // Handle loading contacts from saved database
-  const handleLoadFromSaved = async () => {
-    if (selectedContactIds.length === 0) {
-      setError('Please select at least one contact');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-
-    try {
-      const result = await contactsExport(selectedContactIds);
-      if (result.success) {
-        setParseResult({
-          success: true,
-          numbers: result.contacts,
-          totalRows: result.contacts.length,
-          validRows: result.contacts.length,
-          invalidRows: 0,
-          errors: [],
-        });
-      } else {
-        setError(result.error || 'Failed to load contacts');
-      }
-    } catch (err) {
-      setError('Error loading contacts: ' + err.message);
-    } finally {
-      setLoading(false);
+  // Request to load template — warn if Step 2 has content
+  const requestLoadTemplate = (tpl) => {
+    const hasContent =
+      messageTemplate.trim() || mediaCaption.trim() || mediaFile || mediaType !== 'text';
+    if (hasContent) {
+      setShowTemplateWarning(tpl);
+    } else {
+      applyTemplate(tpl);
     }
   };
 
-  // Toggle contact selection
+  // Toggle single contact
   const toggleContactSelection = (contactId) => {
     setSelectedContactIds(prev =>
-      prev.includes(contactId)
-        ? prev.filter(id => id !== contactId)
-        : [...prev, contactId]
+      prev.includes(contactId) ? prev.filter(id => id !== contactId) : [...prev, contactId]
     );
   };
 
-  // Select all contacts
-  const handleSelectAll = () => {
-    if (selectedContactIds.length === savedContacts.length) {
-      setSelectedContactIds([]);
-    } else {
-      setSelectedContactIds(savedContacts.map(c => c.id));
+  // Select all
+  const applySelectAll = () => {
+    setSelectedContactIds(savedContacts.map(c => c.id));
+  };
+
+  // Apply range (1-based serial numbers)
+  const applyRange = () => {
+    const start = Math.max(1, parseInt(rangeStart) || 1);
+    const end = Math.min(savedContacts.length, parseInt(rangeEnd) || savedContacts.length);
+    if (start > end) {
+      setError(`Invalid range: ${start} to ${end}`);
+      return;
+    }
+    setSelectedContactIds(savedContacts.slice(start - 1, end).map(c => c.id));
+    setError('');
+  };
+
+  // Apply group selection
+  const applyGroup = async (groupId) => {
+    if (!groupId) return;
+    setLoading(true);
+    try {
+      const res = await contactsGetByGroup(parseInt(groupId));
+      if (res.success) setSelectedContactIds(res.contacts.map(c => c.id));
+    } catch (err) {
+      setError('Error loading group contacts: ' + err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
   // Go to next step
-  const handleNextStep = () => {
-    if (step === 1 && parseResult?.numbers?.length > 0) {
-      setStep(2);
+  const handleNextStep = async () => {
+    if (step === 1) {
+      if (selectedContactIds.length === 0) {
+        setError('Please select at least one contact');
+        return;
+      }
+      setLoading(true);
       setError('');
-    } else if (step === 2) {
+      try {
+        const result = await contactsExport(selectedContactIds);
+        if (result.success && result.contacts.length > 0) {
+          setParseResult({
+            success: true,
+            numbers: result.contacts,
+            totalRows: result.contacts.length,
+            validRows: result.contacts.length,
+            invalidRows: 0,
+            errors: [],
+          });
+          setStep(2);
+        } else {
+          setError('Failed to load selected contacts');
+        }
+      } catch (err) {
+        setError('Error loading contacts: ' + err.message);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+    if (step === 2) {
       // For text messages, require message template
       if (mediaType === 'text' && messageTemplate.trim()) {
         setStep(3);
@@ -408,7 +417,7 @@ function NewTask() {
         {/* Step Labels */}
         <div className="flex justify-between mb-8 text-sm">
           <span className={step === 1 ? 'text-white font-medium' : 'text-gray-400'}>
-            Upload Contacts
+            Select Contacts
           </span>
           <span className={step === 2 ? 'text-white font-medium' : 'text-gray-400'}>
             Compose Message
@@ -433,300 +442,197 @@ function NewTask() {
 
         {/* Step Content */}
         <div className="bg-gray-800 rounded-lg border border-gray-700">
-          {/* Step 1: Upload Contacts */}
+          {/* Step 1: Select Contacts */}
           {step === 1 && (
             <div className="p-8">
-              <h2 className="text-xl font-semibold text-white mb-6">Select Contacts</h2>
+              <h2 className="text-xl font-semibold text-white mb-2">Select Contacts</h2>
+              <p className="text-sm text-gray-400 mb-6">
+                {savedContacts.length} contacts available
+              </p>
 
-              {/* Mode Selector */}
-              <div className="mb-6">
-                <div className="grid grid-cols-2 gap-4">
-                  <button
-                    onClick={() => {
-                      setUploadMode('file');
-                      setParseResult(null);
-                      setSelectedContactIds([]);
-                    }}
-                    className={`p-4 rounded-lg border-2 transition-colors ${
-                      uploadMode === 'file'
-                        ? 'border-green-500 bg-green-500/10'
-                        : 'border-gray-700 bg-gray-900 hover:border-gray-600'
-                    }`}
-                  >
-                    <DocumentArrowUpIcon className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                    <p className="text-white font-medium">Upload File</p>
-                    <p className="text-xs text-gray-400 mt-1">CSV or Excel</p>
-                  </button>
-                  <button
-                    onClick={() => {
-                      setUploadMode('saved');
-                      setParseResult(null);
-                      setFilePath('');
-                    }}
-                    className={`p-4 rounded-lg border-2 transition-colors ${
-                      uploadMode === 'saved'
-                        ? 'border-green-500 bg-green-500/10'
-                        : 'border-gray-700 bg-gray-900 hover:border-gray-600'
-                    }`}
-                  >
-                    <svg className="w-8 h-8 mx-auto mb-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                    </svg>
-                    <p className="text-white font-medium">Saved Contacts</p>
-                    <p className="text-xs text-gray-400 mt-1">Use master database</p>
-                  </button>
-                </div>
-              </div>
-
-              {/* File Upload Mode */}
-              {uploadMode === 'file' && !parseResult && (
-                <div className="text-center py-12">
-                  <div className="w-24 h-24 bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-6">
-                    <DocumentArrowUpIcon className="w-12 h-12 text-gray-500" />
-                  </div>
-                  <h3 className="text-lg font-medium text-white mb-2">Upload CSV or Excel File</h3>
-                  <p className="text-gray-400 mb-6 max-w-md mx-auto">
-                    Upload a file with phone numbers and names. Columns: Phone, Name
+              {savedContacts.length === 0 ? (
+                <div className="text-center py-12 bg-gray-900 rounded-lg border border-gray-700">
+                  <UsersIcon className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+                  <p className="text-white font-medium mb-1">No contacts yet</p>
+                  <p className="text-gray-400 text-sm">
+                    Go to the <strong>Contacts</strong> page to upload and manage your contacts first.
                   </p>
-                  <button
-                    onClick={handleFileSelect}
-                    disabled={loading}
-                    className="inline-flex items-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white rounded-lg transition-colors font-medium"
-                  >
-                    {loading ? (
-                      <>
-                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                        Processing...
-                      </>
-                    ) : (
-                      <>
-                        <DocumentArrowUpIcon className="w-5 h-5" />
-                        Select File
-                      </>
-                    )}
-                  </button>
-                  <p className="text-xs text-gray-500 mt-4">Supported: CSV, XLSX, XLS</p>
                 </div>
-              )}
-
-              {/* Saved Contacts Mode */}
-              {uploadMode === 'saved' && !parseResult && (
-                <div className="space-y-4">
-                  {savedContacts.length === 0 ? (
-                    <div className="text-center py-12 bg-gray-900 rounded-lg border border-gray-700">
-                      <p className="text-gray-400 mb-4">No saved contacts found</p>
+              ) : (
+                <>
+                  {/* Quick Select */}
+                  <div className="bg-gray-900 rounded-lg border border-gray-700 p-4 mb-4 space-y-3">
+                    <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Quick Select</p>
+                    <div className="flex flex-wrap gap-3 items-end">
+                      {/* Select All */}
                       <button
-                        onClick={() => setUploadMode('file')}
-                        className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+                        onClick={applySelectAll}
+                        className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm transition-colors"
                       >
-                        Upload a file to import contacts
+                        Select All ({savedContacts.length})
                       </button>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="flex items-center justify-between mb-4">
-                        <p className="text-sm text-gray-400">
-                          {savedContacts.length} contacts available
-                        </p>
+
+                      {/* Deselect */}
+                      {selectedContactIds.length > 0 && (
                         <button
-                          onClick={handleSelectAll}
-                          className="text-sm text-blue-400 hover:text-blue-300"
+                          onClick={() => setSelectedContactIds([])}
+                          className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-sm transition-colors"
                         >
-                          {selectedContactIds.length === savedContacts.length ? 'Deselect All' : 'Select All'}
+                          Clear Selection
+                        </button>
+                      )}
+
+                      {/* Range */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-gray-400">Range:</span>
+                        <input
+                          type="number"
+                          min="1"
+                          max={savedContacts.length}
+                          value={rangeStart}
+                          onChange={e => setRangeStart(e.target.value)}
+                          placeholder="From"
+                          className="w-20 px-2 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:border-green-500"
+                        />
+                        <span className="text-gray-500 text-sm">–</span>
+                        <input
+                          type="number"
+                          min="1"
+                          max={savedContacts.length}
+                          value={rangeEnd}
+                          onChange={e => setRangeEnd(e.target.value)}
+                          placeholder="To"
+                          className="w-20 px-2 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:border-green-500"
+                        />
+                        <button
+                          onClick={applyRange}
+                          disabled={!rangeStart && !rangeEnd}
+                          className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white rounded-lg text-sm transition-colors"
+                        >
+                          Apply
                         </button>
                       </div>
 
-                      <div className="bg-gray-900 rounded-lg border border-gray-700 max-h-96 overflow-y-auto">
-                        <table className="w-full">
-                          <thead className="bg-gray-800 sticky top-0">
-                            <tr>
-                              <th className="px-4 py-3 text-left w-12">
-                                <input
-                                  type="checkbox"
-                                  checked={selectedContactIds.length === savedContacts.length && savedContacts.length > 0}
-                                  onChange={handleSelectAll}
-                                  className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
-                                />
-                              </th>
-                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">Phone</th>
-                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">Name</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-700">
-                            {savedContacts.map((contact) => (
-                              <tr
-                                key={contact.id}
-                                onClick={() => toggleContactSelection(contact.id)}
-                                className="cursor-pointer hover:bg-gray-800 transition-colors"
-                              >
-                                <td className="px-4 py-3">
-                                  <input
-                                    type="checkbox"
-                                    checked={selectedContactIds.includes(contact.id)}
-                                    onChange={() => toggleContactSelection(contact.id)}
-                                    className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
-                                  />
-                                </td>
-                                <td className="px-4 py-3 text-sm text-white font-mono">+{contact.phone}</td>
-                                <td className="px-4 py-3 text-sm text-gray-300">{contact.name || '-'}</td>
-                              </tr>
+                      {/* Group */}
+                      {groups.length > 0 && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-gray-400">Group:</span>
+                          <select
+                            onChange={e => { if (e.target.value) applyGroup(e.target.value); }}
+                            defaultValue=""
+                            className="px-2 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:border-green-500"
+                          >
+                            <option value="" disabled>Select group...</option>
+                            {groups.map(g => (
+                              <option key={g.id} value={g.id}>
+                                {g.name} ({g.member_count})
+                              </option>
                             ))}
-                          </tbody>
-                        </table>
-                      </div>
-
-                      <button
-                        onClick={handleLoadFromSaved}
-                        disabled={selectedContactIds.length === 0 || loading}
-                        className="w-full px-4 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white rounded-lg transition-colors font-medium flex items-center justify-center gap-2"
-                      >
-                        {loading ? (
-                          <>
-                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                            Loading...
-                          </>
-                        ) : (
-                          <>
-                            <CheckCircleIcon className="w-5 h-5" />
-                            Use Selected Contacts ({selectedContactIds.length})
-                          </>
-                        )}
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
-
-              {/* File Upload Result */}
-              {parseResult && (
-                <div className="space-y-6">
-                  {/* File Info */}
-                  <div className="flex items-center justify-between p-4 bg-gray-900 rounded-lg border border-gray-700">
-                    <div className="flex items-center gap-3">
-                      <DocumentArrowUpIcon className="w-6 h-6 text-green-500" />
-                      <div>
-                        <p className="text-white font-medium">{filePath.split('/').pop()}</p>
-                        <p className="text-sm text-gray-400">
-                          {parseResult.totalRows} rows · {parseResult.validRows} valid ·{' '}
-                          {parseResult.invalidRows} invalid
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => {
-                        setFilePath('');
-                        setParseResult(null);
-                      }}
-                      className="text-gray-400 hover:text-white"
-                    >
-                      <XMarkIcon className="w-5 h-5" />
-                    </button>
-                  </div>
-
-                  {/* Summary Stats */}
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
-                      <p className="text-2xl font-bold text-green-400">{parseResult.numbers.length}</p>
-                      <p className="text-sm text-green-300">Valid Contacts</p>
-                    </div>
-                    <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                      <p className="text-2xl font-bold text-blue-400">{parseResult.validRows}</p>
-                      <p className="text-sm text-blue-300">Valid Rows</p>
-                    </div>
-                    <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
-                      <p className="text-2xl font-bold text-red-400">{parseResult.invalidRows}</p>
-                      <p className="text-sm text-red-300">Invalid Rows</p>
-                    </div>
-                  </div>
-
-                  {/* Import to Contacts Database */}
-                  {uploadMode === 'file' && parseResult.numbers.length > 0 && (
-                    <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <h3 className="text-sm font-medium text-blue-300 mb-1">
-                            💾 Save to Master Contacts
-                          </h3>
-                          <p className="text-xs text-blue-200/80">
-                            Import these contacts to your master database for reuse in future campaigns
-                          </p>
-                        </div>
-                        <button
-                          onClick={handleImportToContacts}
-                          disabled={loading}
-                          className="ml-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white rounded-lg transition-colors text-sm font-medium flex items-center gap-2"
-                        >
-                          {loading ? (
-                            <>
-                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                              Importing...
-                            </>
-                          ) : (
-                            <>
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                              </svg>
-                              Import to Database
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Contact Preview */}
-                  <div>
-                    <h3 className="text-sm font-medium text-white mb-3">Contact Preview</h3>
-                    <div className="bg-gray-900 rounded-lg border border-gray-700 max-h-64 overflow-y-auto">
-                      <table className="w-full">
-                        <thead className="bg-gray-800 sticky top-0">
-                          <tr>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">
-                              Phone
-                            </th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-400">
-                              Name
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-700">
-                          {parseResult.numbers.slice(0, 10).map((contact, idx) => (
-                            <tr key={idx}>
-                              <td className="px-4 py-3 text-sm text-white font-mono">
-                                +{contact.phone}
-                              </td>
-                              <td className="px-4 py-3 text-sm text-gray-300">{contact.name || '-'}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      {parseResult.numbers.length > 10 && (
-                        <div className="p-3 text-center text-sm text-gray-400 border-t border-gray-700">
-                          +{parseResult.numbers.length - 10} more contacts
+                          </select>
                         </div>
                       )}
                     </div>
                   </div>
 
-                  {/* Errors */}
-                  {parseResult.errors.length > 0 && (
-                    <div>
-                      <h3 className="text-sm font-medium text-white mb-3">Errors</h3>
-                      <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 max-h-32 overflow-y-auto">
-                        {parseResult.errors.slice(0, 5).map((err, idx) => (
-                          <p key={idx} className="text-xs text-red-300 mb-1">
-                            Row {err.row}: {err.error}
-                          </p>
-                        ))}
-                        {parseResult.errors.length > 5 && (
-                          <p className="text-xs text-red-400 mt-2">
-                            +{parseResult.errors.length - 5} more errors
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
+                  {/* Search */}
+                  <div className="relative mb-3">
+                    <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Search contacts by name or phone..."
+                      value={contactSearch}
+                      onChange={e => setContactSearch(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-green-500 text-sm"
+                    />
+                  </div>
+
+                  {/* Contact List */}
+                  <div className="bg-gray-900 rounded-lg border border-gray-700 max-h-96 overflow-y-auto">
+                    <table className="w-full">
+                      <thead className="bg-gray-800 sticky top-0">
+                        <tr>
+                          <th className="px-3 py-2.5 text-left w-10">
+                            <input
+                              type="checkbox"
+                              checked={
+                                savedContacts.length > 0 &&
+                                savedContacts.every(c => selectedContactIds.includes(c.id))
+                              }
+                              onChange={() =>
+                                selectedContactIds.length === savedContacts.length
+                                  ? setSelectedContactIds([])
+                                  : applySelectAll()
+                              }
+                              className="w-4 h-4 text-green-600 rounded"
+                            />
+                          </th>
+                          <th className="px-2 py-2.5 text-left text-xs font-medium text-gray-400 w-12">#</th>
+                          <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-400">Name</th>
+                          <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-400">Phone</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-800">
+                        {savedContacts
+                          .filter(c =>
+                            !contactSearch ||
+                            c.name.toLowerCase().includes(contactSearch.toLowerCase()) ||
+                            c.phone.includes(contactSearch)
+                          )
+                          .map((contact, idx) => (
+                            <tr
+                              key={contact.id}
+                              onClick={() => toggleContactSelection(contact.id)}
+                              className={`cursor-pointer transition-colors ${
+                                selectedContactIds.includes(contact.id)
+                                  ? 'bg-green-500/5'
+                                  : 'hover:bg-gray-800'
+                              }`}
+                            >
+                              <td className="px-3 py-2.5">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedContactIds.includes(contact.id)}
+                                  onChange={() => toggleContactSelection(contact.id)}
+                                  onClick={e => e.stopPropagation()}
+                                  className="w-4 h-4 text-green-600 rounded"
+                                />
+                              </td>
+                              <td className="px-2 py-2.5 text-xs text-gray-500 font-mono">{idx + 1}</td>
+                              <td className="px-3 py-2.5 text-sm text-white">
+                                {contact.name || <span className="text-gray-500 italic">–</span>}
+                              </td>
+                              <td className="px-3 py-2.5 text-sm text-gray-300 font-mono">+{contact.phone}</td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Footer / Next */}
+                  <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-700">
+                    <p className="text-sm text-gray-400">
+                      {selectedContactIds.length > 0 ? (
+                        <span className="text-green-400 font-medium">{selectedContactIds.length} contacts selected</span>
+                      ) : (
+                        'No contacts selected'
+                      )}
+                    </p>
+                    <button
+                      onClick={handleNextStep}
+                      disabled={selectedContactIds.length === 0 || loading}
+                      className="flex items-center gap-2 px-6 py-2.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white rounded-lg transition-colors font-medium text-sm"
+                    >
+                      {loading ? (
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                      ) : (
+                        <>
+                          Next
+                          <PaperAirplaneIcon className="w-4 h-4" />
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </>
               )}
             </div>
           )}
@@ -734,7 +640,17 @@ function NewTask() {
           {/* Step 2: Compose Message */}
           {step === 2 && (
             <div className="p-8">
-              <h2 className="text-xl font-semibold text-white mb-6">Compose Your Message</h2>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold text-white">Compose Your Message</h2>
+                <button
+                  type="button"
+                  onClick={openTemplatePicker}
+                  className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm transition-colors font-medium"
+                >
+                  <DocumentDuplicateIcon className="w-4 h-4" />
+                  Load Template
+                </button>
+              </div>
 
               <div className="space-y-6">
                 {/* Media Type Selector */}
@@ -1128,19 +1044,19 @@ function NewTask() {
               Previous
             </button>
 
-            {step < 3 ? (
+            {step === 2 ? (
               <button
                 onClick={handleNextStep}
                 disabled={
-                  (step === 1 && !parseResult?.numbers?.length) ||
-                  (step === 2 &&
-                    ((mediaType === 'text' && !messageTemplate.trim()) ||
-                      (mediaType !== 'text' && !mediaFile)))
+                  (mediaType === 'text' && !messageTemplate.trim()) ||
+                  (mediaType !== 'text' && !mediaFile)
                 }
                 className="px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white rounded-lg transition-colors font-medium"
               >
                 Next
               </button>
+            ) : step === 1 ? (
+              <div /> /* Step 1 uses its own embedded Next button */
             ) : (
               <button
                 onClick={handleCreateTask}
@@ -1174,6 +1090,109 @@ function NewTask() {
         mediaFileName={mediaFile?.fileName || null}
         mediaFilePath={mediaFile?.path || null}
       />
+
+      {/* Template Picker Modal */}
+      {showTemplatePicker && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-2xl max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between p-6 border-b border-gray-700">
+              <h3 className="text-lg font-semibold text-white">Choose a Template</h3>
+              <button
+                onClick={() => setShowTemplatePicker(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                <XMarkIcon className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 p-4">
+              {templatesLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500" />
+                </div>
+              ) : templates.length === 0 ? (
+                <div className="text-center py-12">
+                  <DocumentDuplicateIcon className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+                  <p className="text-white font-medium mb-1">No templates yet</p>
+                  <p className="text-gray-400 text-sm">Create templates from the Templates page first.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3">
+                  {templates.map((tpl) => (
+                    <button
+                      key={tpl.id}
+                      onClick={() => requestLoadTemplate(tpl)}
+                      className="text-left p-4 bg-gray-900 border border-gray-700 rounded-lg hover:border-purple-500 transition-colors group"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-white font-medium truncate">{tpl.name}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                              tpl.media_type === 'text'
+                                ? 'bg-blue-500/20 text-blue-400'
+                                : tpl.media_type === 'image'
+                                ? 'bg-green-500/20 text-green-400'
+                                : tpl.media_type === 'video'
+                                ? 'bg-orange-500/20 text-orange-400'
+                                : 'bg-purple-500/20 text-purple-400'
+                            }`}>
+                              {tpl.media_type}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-400 truncate">
+                            {tpl.media_type === 'text'
+                              ? (tpl.message_body || <em className="italic">No message body</em>)
+                              : (tpl.media_caption || tpl.media_filename || `${tpl.media_type} attachment`)}
+                          </p>
+                        </div>
+                        <span className="text-purple-400 text-sm font-medium group-hover:text-purple-300 whitespace-nowrap">
+                          Use this
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Template Overwrite Warning Modal */}
+      {showTemplateWarning && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-md p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-yellow-500/20 flex items-center justify-center flex-shrink-0">
+                <ExclamationTriangleIcon className="w-5 h-5 text-yellow-400" />
+              </div>
+              <div>
+                <h3 className="text-white font-semibold">Replace existing content?</h3>
+                <p className="text-gray-400 text-sm">Your current message will be overwritten.</p>
+              </div>
+            </div>
+            <p className="text-gray-300 text-sm mb-6">
+              Loading <strong className="text-white">"{showTemplateWarning.name}"</strong> will
+              replace the message type, content, and media you've already entered.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowTemplateWarning(null)}
+                className="flex-1 px-4 py-2.5 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors text-sm font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => applyTemplate(showTemplateWarning)}
+                className="flex-1 px-4 py-2.5 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors text-sm font-medium"
+              >
+                Yes, Load Template
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

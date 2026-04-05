@@ -58,6 +58,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
       'contacts:get-count',
       'contacts:get-tags',
       'contacts:export',
+      'contacts:create-group',
+      'contacts:get-groups',
+      'contacts:update-group',
+      'contacts:delete-group',
+      'contacts:add-to-group',
+      'contacts:remove-from-group',
+      'contacts:get-by-group',
+      'templates:create',
+      'templates:get-all',
+      'templates:get',
+      'templates:update',
+      'templates:delete',
     ];
 
     if (validChannels.includes(channel)) {

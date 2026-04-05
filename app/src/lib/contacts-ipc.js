@@ -52,3 +52,33 @@ export async function contactsGetTags() {
 export async function contactsExport(ids = []) {
   return await window.electronAPI.invoke('contacts:export', ids);
 }
+
+// ─── Groups ────────────────────────────────────────────────────────────────
+
+export async function contactsCreateGroup(data) {
+  return await window.electronAPI.invoke('contacts:create-group', data);
+}
+
+export async function contactsGetGroups() {
+  return await window.electronAPI.invoke('contacts:get-groups');
+}
+
+export async function contactsUpdateGroup(id, data) {
+  return await window.electronAPI.invoke('contacts:update-group', { id, ...data });
+}
+
+export async function contactsDeleteGroup(id) {
+  return await window.electronAPI.invoke('contacts:delete-group', id);
+}
+
+export async function contactsAddToGroup(groupId, contactIds) {
+  return await window.electronAPI.invoke('contacts:add-to-group', { groupId, contactIds });
+}
+
+export async function contactsRemoveFromGroup(groupId, contactIds) {
+  return await window.electronAPI.invoke('contacts:remove-from-group', { groupId, contactIds });
+}
+
+export async function contactsGetByGroup(groupId) {
+  return await window.electronAPI.invoke('contacts:get-by-group', groupId);
+}

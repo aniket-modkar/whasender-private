@@ -10,6 +10,8 @@ import NewTask from './pages/NewTask';
 import Monitor from './pages/Monitor';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
+import Contacts from './pages/Contacts';
+import Templates from './pages/Templates';
 import AccountInactive from './pages/AccountInactive';
 
 // Protected Route Component (requires auth and active account)
@@ -188,6 +190,8 @@ function App() {
         >
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/new-task" element={<NewTask />} />
+          <Route path="/contacts" element={<Contacts />} />
+          <Route path="/templates" element={<Templates />} />
           <Route path="/monitor" element={<Monitor />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/settings" element={<Settings />} />
